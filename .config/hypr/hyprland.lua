@@ -16,9 +16,21 @@ hl.on("hyprland.start", function()
     hl.exec_cmd("nm-applet")
     hl.exec_cmd("wl-paste --type text --watch cliphist store")
     hl.exec_cmd("wl-paste --type image --watch cliphist store")
-    hl.exec_cmd("/usr/lib/polkit-kde-authentication-agent-1")
 
-    hl.exec_cmd("awww-daemon")
+    -- Smart Polkit Agent detection (Fedora: /usr/libexec/, Arch: /usr/lib/)
+    if os.execute("test -f /usr/libexec/hyprpolkitagent") == 0 then
+        hl.exec_cmd("/usr/libexec/hyprpolkitagent")
+    elseif os.execute("test -f /usr/lib/hyprpolkitagent") == 0 then
+        hl.exec_cmd("/usr/lib/hyprpolkitagent")
+    elseif os.execute("test -f /usr/libexec/polkit-kde-authentication-agent-1") == 0 then
+        hl.exec_cmd("/usr/libexec/polkit-kde-authentication-agent-1")
+    elseif os.execute("test -f /usr/lib/polkit-kde-authentication-agent-1") == 0 then
+        hl.exec_cmd("/usr/lib/polkit-kde-authentication-agent-1")
+    else
+        hl.exec_cmd("hyprpolkitagent")
+    end
+
+    hl.exec_cmd("awww-daemon || swww-daemon")
     hl.exec_cmd("sleep 2 && qs")
 end)
 

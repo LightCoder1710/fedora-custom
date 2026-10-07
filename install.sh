@@ -80,10 +80,13 @@ fi
 # shellcheck disable=SC1091
 source /etc/os-release
 
-# Arch-compatible distributions normally identify themselves
-# through ID_LIKE=arch or ID=arch.
-if [[ "${ID:-}" != "arch" && "${ID_LIKE:-}" != *arch* ]]; then
-    error "This installer is intended for Arch-compatible Linux distributions."
+DISTRO_FAMILY=""
+if [[ "${ID:-}" == "arch" || "${ID_LIKE:-}" == *arch* ]]; then
+    DISTRO_FAMILY="arch"
+elif [[ "${ID:-}" == "fedora" || "${ID_LIKE:-}" == *fedora* || "${ID:-}" == "rhel" || "${ID_LIKE:-}" == *rhel* ]]; then
+    DISTRO_FAMILY="fedora"
+else
+    error "This installer is intended for Arch or Fedora Linux distributions."
     error "Detected: ${PRETTY_NAME:-unknown}"
     exit 1
 fi
@@ -93,77 +96,57 @@ if ! command -v sudo >/dev/null 2>&1; then
     exit 1
 fi
 
-if ! command -v pacman >/dev/null 2>&1; then
-    error "pacman was not found. This installer requires an Arch-based system."
-    exit 1
-fi
-
 if [[ ! -d "$SRC" ]]; then
     error "No .config directory found at $SRC"
     exit 1
 fi
 
-# --------------------------------------------------
-# Package manager detection
-# --------------------------------------------------
-
-PACKAGE_FILE="$REPO_DIR/packages.txt"
-
-if [[ ! -f "$PACKAGE_FILE" ]]; then
-    error "packages.txt not found."
-    exit 1
-fi
-
-AUR_HELPER=""
-if command -v paru >/dev/null 2>&1; then
-    AUR_HELPER="paru"
-elif command -v yay >/dev/null 2>&1; then
-    AUR_HELPER="yay"
-fi
-
-info "Detected distribution: ${PRETTY_NAME:-unknown}"
-
-if [[ -n "$AUR_HELPER" ]]; then
-    info "AUR helper available: $AUR_HELPER"
-else
-    info "No AUR helper found. Bootstrapping yay..."
-
-    if sudo pacman -S --needed --noconfirm git base-devel; then
-        YAY_BUILD_DIR="$(mktemp -d)"
-
-        if git clone https://aur.archlinux.org/yay.git "$YAY_BUILD_DIR/yay" \
-            && (cd "$YAY_BUILD_DIR/yay" && makepkg -si --noconfirm); then
-            AUR_HELPER="yay"
-            success "yay installed."
-        else
-            warning "Failed to build/install yay automatically."
-            warning "You can install one manually (paru or yay) and re-run this script."
-        fi
-
-        rm -rf "$YAY_BUILD_DIR"
-    else
-        warning "Failed to install git/base-devel; cannot bootstrap an AUR helper."
-        warning "AUR-only packages will be listed but skipped."
-    fi
-fi
+info "Detected distribution: ${PRETTY_NAME:-unknown} (Family: $DISTRO_FAMILY)"
 
 # --------------------------------------------------
-# Packages: split into official-repo vs AUR-only
+# Package manager detection & Installation
 # --------------------------------------------------
 
-mapfile -t PACKAGES < <(
-    grep -vE '^[[:space:]]*(#|$)' "$PACKAGE_FILE"
-)
-
-OFFICIAL_PACKAGES=()
-AUR_PACKAGES=()
 UNKNOWN_PACKAGES=()
 
-if [[ "${#PACKAGES[@]}" -eq 0 ]]; then
-    warning "packages.txt does not contain any packages."
-else
-    info "Resolving packages against official repos..."
+if [[ "$DISTRO_FAMILY" == "arch" ]]; then
+    PACKAGE_FILE="$REPO_DIR/packages.txt"
+    if [[ ! -f "$PACKAGE_FILE" ]]; then
+        error "packages.txt not found."
+        exit 1
+    fi
 
+    AUR_HELPER=""
+    if command -v paru >/dev/null 2>&1; then
+        AUR_HELPER="paru"
+    elif command -v yay >/dev/null 2>&1; then
+        AUR_HELPER="yay"
+    fi
+
+    if [[ -n "$AUR_HELPER" ]]; then
+        info "AUR helper available: $AUR_HELPER"
+    else
+        info "No AUR helper found. Bootstrapping yay..."
+        if sudo pacman -S --needed --noconfirm git base-devel; then
+            YAY_BUILD_DIR="$(mktemp -d)"
+            if git clone https://aur.archlinux.org/yay.git "$YAY_BUILD_DIR/yay" \
+                && (cd "$YAY_BUILD_DIR/yay" && makepkg -si --noconfirm); then
+                AUR_HELPER="yay"
+                success "yay installed."
+            else
+                warning "Failed to build/install yay automatically."
+            fi
+            rm -rf "$YAY_BUILD_DIR"
+        else
+            warning "Failed to install git/base-devel; skipping AUR helper bootstrap."
+        fi
+    fi
+
+    mapfile -t PACKAGES < <(grep -vE '^[[:space:]]*(#|$)' "$PACKAGE_FILE")
+    OFFICIAL_PACKAGES=()
+    AUR_PACKAGES=()
+
+    info "Resolving Arch packages..."
     for pkg in "${PACKAGES[@]}"; do
         if pacman -Si "$pkg" >/dev/null 2>&1; then
             OFFICIAL_PACKAGES+=("$pkg")
@@ -175,29 +158,26 @@ else
     done
 
     if [[ "${#OFFICIAL_PACKAGES[@]}" -gt 0 ]]; then
-        info "Installing official-repo packages..."
-        if sudo pacman -Syu --needed --noconfirm "${OFFICIAL_PACKAGES[@]}"; then
-            success "Official-repo packages installed."
-        else
-            warning "pacman reported an error installing one or more official-repo packages. Continuing anyway."
-        fi
+        info "Installing official pacman packages..."
+        sudo pacman -Syu --needed --noconfirm "${OFFICIAL_PACKAGES[@]}" || warning "pacman installation completed with warnings."
     fi
 
-    if [[ "${#AUR_PACKAGES[@]}" -gt 0 ]]; then
-        if [[ -n "$AUR_HELPER" ]]; then
-            info "Installing AUR packages with $AUR_HELPER: ${AUR_PACKAGES[*]}"
-            if "$AUR_HELPER" -S --needed --noconfirm "${AUR_PACKAGES[@]}"; then
-                success "AUR packages installed."
-            else
-                warning "$AUR_HELPER reported an error installing one or more AUR packages. Continuing anyway."
-            fi
-        fi
+    if [[ "${#AUR_PACKAGES[@]}" -gt 0 && -n "$AUR_HELPER" ]]; then
+        info "Installing AUR packages with $AUR_HELPER..."
+        "$AUR_HELPER" -S --needed --noconfirm "${AUR_PACKAGES[@]}" || warning "$AUR_HELPER installation completed with warnings."
     fi
 
-    if [[ "${#UNKNOWN_PACKAGES[@]}" -gt 0 ]]; then
-        warning "Could not resolve the following package(s) in any repo: ${UNKNOWN_PACKAGES[*]}"
-        warning "Check the name with 'pacman -Ss <name>' or https://aur.archlinux.org, then fix packages.txt."
-    fi
+elif [[ "$DISTRO_FAMILY" == "fedora" ]]; then
+    PACKAGE_FILE="$REPO_DIR/packages_fedora.txt"
+    [[ -f "$PACKAGE_FILE" ]] || PACKAGE_FILE="$REPO_DIR/packages.txt"
+
+    info "Enabling Fedora COPR repositories (solopasha/hyprland)..."
+    sudo dnf copr enable -y solopasha/hyprland || warning "Could not enable COPR solopasha/hyprland"
+
+    mapfile -t PACKAGES < <(grep -vE '^[[:space:]]*(#|$)' "$PACKAGE_FILE")
+
+    info "Installing Fedora DNF packages..."
+    sudo dnf install -y --skip-broken "${PACKAGES[@]}" || warning "DNF package installation completed with warnings."
 fi
 
 # --------------------------------------------------
@@ -359,10 +339,10 @@ fi
 # --------------------------------------------------
 
 if command -v systemctl >/dev/null 2>&1; then
-    if pacman -Qi power-profiles-daemon >/dev/null 2>&1; then
+    if command -v powerprofilesctl >/dev/null 2>&1 || systemctl list-unit-files power-profiles-daemon.service >/dev/null 2>&1; then
         info "Enabling power-profiles-daemon..."
 
-        if sudo systemctl enable --now power-profiles-daemon.service; then
+        if sudo systemctl enable --now power-profiles-daemon.service 2>/dev/null; then
             success "power-profiles-daemon enabled."
         else
             warning "Failed to enable power-profiles-daemon."

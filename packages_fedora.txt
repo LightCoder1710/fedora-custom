@@ -1,0 +1,144 @@
+# 43PR/dotfiles (Fedora DNF Package List)
+# Install e.g.: sudo dnf install cava
+# Remove e.g.: sudo dnf remove cava
+
+# --------------------------------------------------
+# Hyprland / Wayland / Desktop
+# --------------------------------------------------
+
+hyprland
+hyprlock
+hyprpolkitagent
+quickshell
+rofi-wayland
+polkit
+qt6-qtwayland
+
+# --------------------------------------------------
+# Desktop Portals / X11 Compatibility / User Dirs
+# --------------------------------------------------
+
+xdg-desktop-portal-hyprland
+xdg-desktop-portal-gtk
+xorg-x11-server-Xwayland
+xdg-user-dirs
+xdg-utils
+
+# --------------------------------------------------
+# Wallpaper / Screenshots / Image Tools
+# --------------------------------------------------
+
+swww
+grim
+slurp
+ImageMagick
+matugen
+
+# --------------------------------------------------
+# Networking / Bluetooth
+# --------------------------------------------------
+
+NetworkManager
+network-manager-applet
+bluez
+bluez-tools
+
+# --------------------------------------------------
+# Audio
+# --------------------------------------------------
+
+pipewire
+pipewire-pulseaudio
+wireplumber
+
+# --------------------------------------------------
+# Clipboard
+# --------------------------------------------------
+
+cliphist
+wl-clipboard
+
+# --------------------------------------------------
+# Terminal / Shell
+# --------------------------------------------------
+
+kitty
+zsh
+zsh-autosuggestions
+zsh-syntax-highlighting
+starship
+eza
+
+# --------------------------------------------------
+# File Manager / File Utilities
+# --------------------------------------------------
+
+Thunar
+thunar-volman
+thunar-archive-plugin
+gvfs
+tumbler
+ffmpegthumbnailer
+ncdu
+
+# --------------------------------------------------
+# GTK / Theming / Icons / Appearance
+# --------------------------------------------------
+
+gtk3
+gtk4
+glib2
+dconf
+gsettings-desktop-schemas
+adw-gtk3-theme
+papirus-icon-theme
+gnome-themes-extra
+
+# --------------------------------------------------
+# Media
+# --------------------------------------------------
+
+mpv
+
+# --------------------------------------------------
+# System Monitoring / Hardware
+# --------------------------------------------------
+
+btop
+nvtop
+dmidecode
+brightnessctl
+gammastep
+power-profiles-daemon
+
+# --------------------------------------------------
+# Desktop Notifications
+# --------------------------------------------------
+
+libnotify
+
+# --------------------------------------------------
+# Terminal / System Visualizers
+# --------------------------------------------------
+
+cava
+fastfetch
+cmatrix
+
+# --------------------------------------------------
+# Fonts
+# --------------------------------------------------
+
+jetbrains-mono-fonts
+google-roboto-mono-fonts
+fontawesome-fonts
+
+# --------------------------------------------------
+# Scripting / Package / Application Utilities
+# --------------------------------------------------
+
+python3
+jq
+flatpak
+curl
+unzip

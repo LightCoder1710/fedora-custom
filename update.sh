@@ -83,73 +83,65 @@ UNKNOWN_PACKAGES=()
 
 if [[ "$SKIP_PACKAGES" -eq 1 ]]; then
     info "Skipping package installation (--skip-packages)."
-elif ! command -v pacman >/dev/null 2>&1; then
-    error "pacman was not found. This updater requires an Arch-based system."
-    exit 1
-elif [[ ! -f "$PACKAGE_FILE" ]]; then
-    warning "packages.txt not found; skipping package installation."
-else
-    mapfile -t PACKAGES < <(grep -vE '^[[:space:]]*(#|$)' "$PACKAGE_FILE")
+elif command -v dnf >/dev/null 2>&1; then
+    PACKAGE_FILE="$REPO_DIR/packages_fedora.txt"
+    [[ -f "$PACKAGE_FILE" ]] || PACKAGE_FILE="$REPO_DIR/packages.txt"
 
+    mapfile -t PACKAGES < <(grep -vE '^[[:space:]]*(#|$)' "$PACKAGE_FILE")
     MISSING=()
     for pkg in "${PACKAGES[@]}"; do
-        pacman -Qi "$pkg" >/dev/null 2>&1 || MISSING+=("$pkg")
+        rpm -q "$pkg" >/dev/null 2>&1 || MISSING+=("$pkg")
     done
 
     if [[ "${#MISSING[@]}" -eq 0 ]]; then
-        info "Packages: everything in packages.txt is already installed."
+        info "Packages: everything in $PACKAGE_FILE is already installed."
     elif [[ "$DRY_RUN" -eq 1 ]]; then
         info "Would install (${#MISSING[@]}): ${MISSING[*]}"
-    elif ! command -v sudo >/dev/null 2>&1; then
-        warning "sudo not found; skipping package installation."
+    elif command -v sudo >/dev/null 2>&1; then
+        info "Installing new Fedora packages with dnf: ${MISSING[*]}"
+        sudo dnf install -y --skip-broken "${MISSING[@]}" || warning "DNF reported warnings/errors."
+    fi
+
+elif command -v pacman >/dev/null 2>&1; then
+    PACKAGE_FILE="$REPO_DIR/packages.txt"
+    if [[ ! -f "$PACKAGE_FILE" ]]; then
+        warning "packages.txt not found; skipping package installation."
     else
-        AUR_HELPER=""
-        if command -v paru >/dev/null 2>&1; then
-            AUR_HELPER="paru"
-        elif command -v yay >/dev/null 2>&1; then
-            AUR_HELPER="yay"
-        fi
-
-        OFFICIAL_PACKAGES=()
-        AUR_PACKAGES=()
-
-        info "Resolving new packages..."
-        for pkg in "${MISSING[@]}"; do
-            if pacman -Si "$pkg" >/dev/null 2>&1; then
-                OFFICIAL_PACKAGES+=("$pkg")
-            elif [[ -n "$AUR_HELPER" ]] && "$AUR_HELPER" -Si "$pkg" >/dev/null 2>&1; then
-                AUR_PACKAGES+=("$pkg")
-            else
-                UNKNOWN_PACKAGES+=("$pkg")
-            fi
+        mapfile -t PACKAGES < <(grep -vE '^[[:space:]]*(#|$)' "$PACKAGE_FILE")
+        MISSING=()
+        for pkg in "${PACKAGES[@]}"; do
+            pacman -Qi "$pkg" >/dev/null 2>&1 || MISSING+=("$pkg")
         done
 
-        if [[ "${#OFFICIAL_PACKAGES[@]}" -gt 0 ]]; then
-            info "Installing new official-repo packages: ${OFFICIAL_PACKAGES[*]}"
-            if sudo pacman -S --needed --noconfirm "${OFFICIAL_PACKAGES[@]}"; then
-                success "Official-repo packages installed."
-            else
-                warning "pacman reported an error. If it was a 404 or stale database, run 'sudo pacman -Syu' and re-run this script."
-            fi
-        fi
+        if [[ "${#MISSING[@]}" -eq 0 ]]; then
+            info "Packages: everything in packages.txt is already installed."
+        elif [[ "$DRY_RUN" -eq 1 ]]; then
+            info "Would install (${#MISSING[@]}): ${MISSING[*]}"
+        elif command -v sudo >/dev/null 2>&1; then
+            AUR_HELPER=""
+            command -v paru >/dev/null 2>&1 && AUR_HELPER="paru"
+            command -v yay >/dev/null 2>&1 && AUR_HELPER="yay"
 
-        if [[ "${#AUR_PACKAGES[@]}" -gt 0 ]]; then
-            if [[ -n "$AUR_HELPER" ]]; then
-                info "Installing new AUR packages with $AUR_HELPER: ${AUR_PACKAGES[*]}"
-                if "$AUR_HELPER" -S --needed --noconfirm "${AUR_PACKAGES[@]}"; then
-                    success "AUR packages installed."
+            OFFICIAL_PACKAGES=()
+            AUR_PACKAGES=()
+
+            for pkg in "${MISSING[@]}"; do
+                if pacman -Si "$pkg" >/dev/null 2>&1; then
+                    OFFICIAL_PACKAGES+=("$pkg")
+                elif [[ -n "$AUR_HELPER" ]] && "$AUR_HELPER" -Si "$pkg" >/dev/null 2>&1; then
+                    AUR_PACKAGES+=("$pkg")
                 else
-                    warning "$AUR_HELPER reported an error installing one or more packages. Continuing anyway."
+                    UNKNOWN_PACKAGES+=("$pkg")
                 fi
-            else
-                warning "No AUR helper found; cannot install: ${AUR_PACKAGES[*]}"
-                warning "Run install.sh once to bootstrap an AUR helper, or install one manually."
-            fi
-        fi
+            done
 
-        if [[ "${#UNKNOWN_PACKAGES[@]}" -gt 0 ]]; then
-            warning "Could not resolve the following package(s) in any repo: ${UNKNOWN_PACKAGES[*]}"
-            warning "Check the name with 'pacman -Ss <name>' or https://aur.archlinux.org, then fix packages.txt."
+            if [[ "${#OFFICIAL_PACKAGES[@]}" -gt 0 ]]; then
+                sudo pacman -S --needed --noconfirm "${OFFICIAL_PACKAGES[@]}" || warning "pacman reported an error."
+            fi
+
+            if [[ "${#AUR_PACKAGES[@]}" -gt 0 && -n "$AUR_HELPER" ]]; then
+                "$AUR_HELPER" -S --needed --noconfirm "${AUR_PACKAGES[@]}" || warning "$AUR_HELPER reported an error."
+            fi
         fi
     fi
 fi
